@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Hacker Terminal Simulation</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: #0a0f1a;
+      overflow: hidden;
+      font-family: 'Fira Mono', 'Consolas', 'Monaco', monospace;
+    }
+    body::before {
+      /* Scanlines effect */
+      content: "";
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      pointer-events: none;
+      background: repeating-linear-gradient(
+        to bottom,
+        rgba(0,0,0,0) 0px,
+        rgba(0,0,0,0) 2px,
+        rgba(0,0,0,0.08) 4px
+      );
+      z-index: 1000;
+    }
+    .terminal {
+      position: absolute;
+      top: 40px; left: 40px;
+      width: 600px;
+      height: 400px;
+      background: rgba(10,20,30,0.98);
+      border: 2px solid #0ff;
+      border-radius: 8px;
+      box-shadow: 0 0 40px #0ff4, 0 0 2px #0ff;
+      overflow: hidden;
+      resize: both;
+      min-width: 320px;
+      min-height: 200px;
+      z-index: 10;
+      user-select: none;
+      transition: box-shadow 0.2s;
+    }
+    .terminal.active {
+      box-shadow: 0 0 60px #0ffb, 0 0 8px #0ff;
+      border-color: #fff;
+      z-index: 100;
+    }
+    .terminal-header {
+      background: linear-gradient(90deg, #0ff2 0%, #0ff4 100%);
+      color: #0ff;
+      padding: 8px 16px;
+      font-weight: bold;
+      cursor: move;
+      letter-spacing: 2px;
+      font-size: 1.1em;
+      border-bottom: 1px solid #0ff8;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .terminal-header .close-btn {
+      color: #f44;
+      font-size: 1.2em;
+      cursor: pointer;
+      margin-left: 10px;
+      transition: color 0.2s;
+    }
+    .terminal-header .close-btn:hover {
+      color: #fff;
+    }
+    .terminal-body {
+      padding: 16px;
+      color: #0f0;
+      font-size: 1.05em;
+      height: calc(100% - 44px);
+      overflow-y: auto;
+      background: linear-gradient(180deg, #0a0f1a 80%, #0ff1 100%);
+      text-shadow: 0 0 4px #0f08, 0 0 2px #0f0;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .glow {
+      color: #0ff;
+      text-shadow: 0 0 8px #0ff, 0 0 2px #fff;
+    }
+    .matrix {
+      color: #0f0;
+      text-shadow: 0 0 8px #0f0, 0 0 2px #fff;
+      font-family: 'Fira Mono', 'Consolas', 'Monaco', monospace;
+      font-size: 1.1em;
+      letter-spacing: 1px;
+    }
+    .prompt {
+      color: #fff;
+      text-shadow: 0 0 4px #fff, 0 0 2px #0ff;
+    }
+    /* Custom scrollbar */
+    .terminal-body::-webkit-scrollbar {
+      width: 8px;
+      background: #0ff2;
+    }
+    .terminal-body::-webkit-scrollbar-thumb {
+      background: #0ff8;
+      border-radius: 4px;
+    }
+    /* Responsive */
+    @media (max-width: 700px) {
+      .terminal {
+        width: 98vw !important;
+        left: 1vw !important;
+        min-width: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Terminal 1: Server Log -->
+  <div class="terminal" id="terminal1" style="top:40px;left:40px;">
+    <div class="terminal-header">
+      <span>root@server:~</span>
+      <span class="close-btn" onclick="closeTerminal('terminal1')">&times;</span>
+    </div>
+    <div class="terminal-body" id="logArea"></div>
+  </div>
+  <!-- Terminal 2: Matrix Rain -->
+  <div class="terminal" id="terminal2" style="top:100px;left:700px;width:400px;height:300px;">
+    <div class="terminal-header">
+      <span>Decrypting Hash_Code@db:~</span>
+      <span class="close-btn" onclick="closeTerminal('terminal2')">&times;</span>
+    </div>
+    <div class="terminal-body" id="matrixArea"></div>
+  </div>
+  <!-- Terminal 3: Typewriter -->
+  <div class="terminal" id="terminal3" style="top:500px;left:200px;width:500px;height:200px;">
+    <div class="terminal-header">
+      <span>hacker@mainframe:~</span>
+      <span class="close-btn" onclick="closeTerminal('terminal3')">&times;</span>
+    </div>
+    <div class="terminal-body" id="typewriterArea"></div>
+  </div>
+  <script>
+    // --- Movable Terminals ---
+    let activeTerminal = null, offsetX = 0, offsetY = 0;
+    document.querySelectorAll('.terminal-header').forEach(header => {
+      header.addEventListener('mousedown', function(e) {
+        activeTerminal = header.parentElement;
+        document.querySelectorAll('.terminal').forEach(t => t.classList.remove('active'));
+        activeTerminal.classList.add('active');
+        offsetX = e.clientX - activeTerminal.offsetLeft;
+        offsetY = e.clientY - activeTerminal.offsetTop;
+        document.body.style.userSelect = 'none';
+      });
+    });
+    document.addEventListener('mousemove', function(e) {
+      if (activeTerminal) {
+        let x = e.clientX - offsetX, y = e.clientY - offsetY;
+        // Keep within window
+        x = Math.max(0, Math.min(window.innerWidth - activeTerminal.offsetWidth, x));
+        y = Math.max(0, Math.min(window.innerHeight - activeTerminal.offsetHeight, y));
+        activeTerminal.style.left = x + 'px';
+        activeTerminal.style.top = y + 'px';
+      }
+    });
+    document.addEventListener('mouseup', function() {
+      activeTerminal = null;
+      document.body.style.userSelect = '';
+    });
+    // Bring terminal to front on click
+    document.querySelectorAll('.terminal').forEach(t => {
+      t.addEventListener('mousedown', function() {
+        document.querySelectorAll('.terminal').forEach(t2 => t2.classList.remove('active'));
+        t.classList.add('active');
+      });
+    });
+    // Close terminal
+    function closeTerminal(id) {
+      document.getElementById(id).style.display = 'none';
+    }
+
+    // --- Terminal 1: Fake Server Log ---
+    const logArea = document.getElementById('logArea');
+    const fakeLogs = [
+      "[INFO] Connecting to database server 192.168.1.10:3306 ...",
+      "[OK] Connection established.",
+      "[INFO] Authenticating as user 'admin' ...",
+      "[OK] Authentication successful.",
+      "[INFO] Querying user table ...",
+      "[DATA] SELECT * FROM users WHERE access_level='root';",
+      "[DATA] 3 records found.",
+      "[INFO] Downloading records ...",
+      "[OK] Download complete.",
+      "[INFO] Injecting payload ...",
+      "[OK] Payload executed.",
+      "[INFO] Elevating privileges ...",
+      "[OK] Privileges escalated.",
+      "[INFO] Accessing secure files ...",
+      "[OK] File 'secrets.txt' downloaded.",
+      "[WARN] Intrusion detection system triggered!",
+      "[INFO] Spoofing logs ...",
+      "[OK] Logs spoofed.",
+      "[INFO] Disconnecting ...",
+      "[OK] Disconnected from server.",
+      "[END] Session terminated."
+    ];
+    let logIndex = 0;
+    function printLogLine() {
+      if (logIndex < fakeLogs.length) {
+        let line = fakeLogs[logIndex];
+        let color = "#0f0";
+        if (line.includes("[WARN]")) color = "#ff0";
+        if (line.includes("[OK]")) color = "#0ff";
+        if (line.includes("[END]")) color = "#f44";
+        logArea.innerHTML += `<span style="color:${color};">${line}</span><br>`;
+        logArea.scrollTop = logArea.scrollHeight;
+        logIndex++;
+        setTimeout(printLogLine, 600 + Math.random()*400);
+      } else {
+        // Loop logs
+        setTimeout(() => {
+          logArea.innerHTML = "";
+          logIndex = 0;
+          printLogLine();
+        }, 2000);
+      }
+    }
+    printLogLine();
+
+    // --- Terminal 2: Matrix Rain Animation ---
+    const matrixArea = document.getElementById('matrixArea');
+    const cols = 32, rows = 12;
+    let matrixData = Array.from({length: rows}, () =>
+      Array.from({length: cols}, () => Math.random() > 0.8 ? String.fromCharCode(0x30A0 + Math.random()*96) : " ")
+    );
+    function drawMatrix() {
+      let html = "";
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          let char = matrixData[r][c];
+          let style = (Math.random() > 0.97) ? 'color:#fff;' : '';
+          html += `<span class="matrix" style="${style}">${char}</span>`;
+        }
+        html += "<br>";
+      }
+      matrixArea.innerHTML = html;
+      // Shift down
+      for (let c = 0; c < cols; c++) {
+        if (Math.random() > 0.8) {
+          for (let r = rows-1; r > 0; r--) matrixData[r][c] = matrixData[r-1][c];
+          matrixData[0][c] = Math.random() > 0.7 ? String.fromCharCode(0x30A0 + Math.random()*96) : " ";
+        }
+      }
+    }
+    setInterval(drawMatrix, 80);
+
+    // --- Terminal 3: Typewriter Hacking Commands ---
+    const typewriterArea = document.getElementById('typewriterArea');
+    const commands = [
+      '<span class="prompt">root@mainframe:~$</span> nmap -A 10.0.0.5',
+      'Starting Nmap 7.80 ( https://nmap.org ) at 2025-07-05 22:00 UTC',
+      'Nmap scan report for 10.0.0.5',
+      'Host is up (0.0010s latency).',
+      'PORT     STATE SERVICE VERSION',
+      '22/tcp   open  ssh     OpenSSH 7.2p2 Ubuntu 4ubuntu2.8',
+      '80/tcp   open  http    Apache httpd 2.4.18 ((Ubuntu))',
+      '3306/tcp open  mysql   MySQL 5.7.29-0ubuntu0.16.04.1',
+      '<span class="prompt">root@mainframe:~$</span> ssh admin@10.0.0.5',
+      'admin@10.0.0.5\'s password: ********',
+      'Welcome to Ubuntu 16.04.6 LTS (GNU/Linux 4.15.0-112-generic x86_64)',
+      '<span class="prompt">admin@10.0.0.5:~$</span> sudo cat /etc/shadow',
+      'root:$6$randomsalt$hashhashhash:18000:0:99999:7:::',
+      'admin:$6$randomsalt$hashhashhash:18000:0:99999:7:::',
+      '<span class="prompt">admin@10.0.0.5:~$</span> exit',
+      '<span class="prompt">root@mainframe:~$</span> _'
+    ];
+    let cmdIndex = 0, charIndex = 0;
+    function typeCommand() {
+      if (cmdIndex < commands.length) {
+        let line = commands[cmdIndex];
+        if (charIndex < line.length) {
+          typewriterArea.innerHTML += line[charIndex];
+          charIndex++;
+          setTimeout(typeCommand, 18 + Math.random()*30);
+        } else {
+          typewriterArea.innerHTML += "<br>";
+          cmdIndex++;
+          charIndex = 0;
+          setTimeout(typeCommand, 400 + Math.random()*300);
+        }
+        typewriterArea.scrollTop = typewriterArea.scrollHeight;
+      } else {
+        // Loop
+        setTimeout(() => {
+          typewriterArea.innerHTML = "";
+          cmdIndex = 0;
+          charIndex = 0;
+          typeCommand();
+        }, 2000);
+      }
+    }
+    typeCommand();
+  </script>
+</body>
+</html>
